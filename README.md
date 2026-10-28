@@ -34,8 +34,8 @@ Como biblioteca:
 ```python
 from validabr import valida_cpf, formata_cnpj, identifica
 
-valida_cpf("529.982.247-25")      # True
-formata_cnpj("11222333000181")    # '11.222.333/0001-81'
+valida_cpf("529.982.247-25")  # True
+formata_cnpj("11222333000181")  # '11.222.333/0001-81'
 identifica("11.222.333/0001-81")  # 'CNPJ'
 ```
 
