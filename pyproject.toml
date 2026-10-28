@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valida-br"
-version = "0.1.0"
+version = "1.0.0"
 description = "Valida, formata e gera CPF e CNPJ"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff==0.17.3"]
 
 [project.scripts]
 validabr = "validabr.cli:main"
