@@ -22,5 +22,4 @@ __all__ = [
     "somente_digitos",
     "valida_cnpj",
     "valida_cpf",
-    "valida"
 ]
