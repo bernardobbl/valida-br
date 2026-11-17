@@ -7,3 +7,7 @@ __pycache__/
 resultado.xml
 dist/
 build/
+semgrep.json
+semgrep.sarif
+zap/
+api.log

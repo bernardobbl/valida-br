@@ -1,0 +1,74 @@
+# Regras de SAST próprias do projeto (somam-se aos pacotes p/python, p/secrets e
+# p/github-actions do registro do Semgrep). Cada regra aqui é uma validação que
+# o job "sast" do pipeline aplica a todo push e pull request.
+rules:
+  - id: valida-br-eval-exec
+    languages: [python]
+    severity: ERROR
+    message: >-
+      eval()/exec() executam texto como código. Com entrada do usuário isso vira
+      execução remota de código (OWASP A03 - Injection).
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+    metadata:
+      cwe: "CWE-95: Eval Injection"
+      owasp: "A03:2021 - Injection"
+
+  - id: valida-br-subprocess-shell
+    languages: [python]
+    severity: ERROR
+    message: >-
+      subprocess com shell=True permite injeção de comandos. Passe a lista de
+      argumentos sem shell.
+    pattern-either:
+      - pattern: subprocess.$F(..., shell=True, ...)
+      - pattern: os.system(...)
+    metadata:
+      cwe: "CWE-78: OS Command Injection"
+      owasp: "A03:2021 - Injection"
+
+  - id: valida-br-segredo-no-codigo
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Parece um segredo escrito direto no código ($VAR). Use variável de
+      ambiente ou o GitHub Secrets.
+    patterns:
+      - pattern: $VAR = "$VALOR"
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(senha|password|passwd|secret|segredo|token|api_?key).*
+      - metavariable-regex:
+          metavariable: $VALOR
+          regex: .{6,}
+    metadata:
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+
+  - id: valida-br-servidor-exposto
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Servidor escutando em 0.0.0.0 por padrão fica exposto em todas as
+      interfaces de rede. Deixe 127.0.0.1 como padrão e exponha só quando preciso.
+    pattern-either:
+      - pattern: ThreadingHTTPServer(("0.0.0.0", $P), ...)
+      - pattern: HTTPServer(("0.0.0.0", $P), ...)
+      - pattern: |
+          def $F(..., host="0.0.0.0", ...):
+              ...
+    metadata:
+      cwe: "CWE-1327: Binding to an Unrestricted IP Address"
+
+  - id: valida-br-pickle
+    languages: [python]
+    severity: ERROR
+    message: pickle/marshal carregam objetos arbitrários; nunca use com dados externos.
+    pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+      - pattern: marshal.loads(...)
+    metadata:
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      owasp: "A08:2021 - Software and Data Integrity Failures"

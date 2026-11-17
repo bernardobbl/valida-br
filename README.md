@@ -44,18 +44,75 @@ identifica("11.222.333/0001-81")  # 'CNPJ'
 Arquivo: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 ```
-lint ──► testes (3.10, 3.11, 3.12, 3.13) ──► build ──► release (só em tag v*)
+lint ──► testes (3.10, 3.11, 3.12, 3.13) ──► build ──► DAST (OWASP ZAP) ──► release (só em tag v*)
+SAST (Semgrep) ──────────────────────────────┘
 ```
 
 | Job | O que faz |
 |-----|-----------|
 | **lint** | `ruff check` e `ruff format --check` |
+| **sast** | Semgrep no código e no workflow; o gate reprova achados de severidade média ou maior |
 | **test** | `pytest` com cobertura mínima de 90%, em matriz de 4 versões do Python, e smoke test da CLI |
-| **build** | gera o pacote (`.whl` e `.tar.gz`) e guarda como artefato |
-| **release** | quando uma tag `v*` é enviada, cria a Release no GitHub com o pacote anexado |
+| **build** | gera o pacote (`.whl` e `.tar.gz`) e guarda como artefato; só roda se testes **e** SAST passarem |
+| **dast** | instala o pacote do build, sobe a API e roda o OWASP ZAP contra ela; o gate reprova alertas de risco médio ou maior |
+| **release** | quando uma tag `v*` é enviada, cria a Release no GitHub com o pacote anexado; só roda se o DAST passar |
 
 Dispara em push para `main`, `develop`, `feature/**`, `release/**`, `hotfix/**`, em pull requests
 para `main`/`develop` e manualmente (`workflow_dispatch`).
+
+## Segurança no pipeline (SAST e DAST)
+
+### SAST: Semgrep
+
+Analisa o código-fonte **sem executá-lo**. O job `sast` roda:
+
+- pacotes do registro do Semgrep: `p/python`, `p/secrets` e `p/github-actions` (este último
+  verifica o próprio `ci.yml`, por exemplo actions sem SHA fixo);
+- regras próprias em [`.semgrep/regras-valida-br.yml`](.semgrep/regras-valida-br.yml):
+  `eval`/`exec`, `subprocess` com `shell=True`, segredo escrito no código, servidor escutando em
+  `0.0.0.0` e `pickle` com dados externos.
+
+O resultado vai para o artefato `relatorio-sast` (JSON e SARIF) e para a aba **Security** do GitHub.
+
+### DAST: OWASP ZAP
+
+Ataca a aplicação **rodando**. Como o valida-br era só biblioteca/CLI, ele ganhou uma API HTTP
+mínima (só biblioteca padrão) para servir de alvo:
+
+```bash
+validabr serve --porta 8000
+curl "http://127.0.0.1:8000/api/valida?doc=529.982.247-25"
+# {"documento": "52998224725", "tipo": "CPF", "valido": true, "formatado": "529.982.247-25"}
+curl "http://127.0.0.1:8000/api/gera/cnpj?quantidade=2"
+```
+
+O job `dast` instala o `.whl` gerado no build, sobe a API e roda o `zap-baseline.py` (spider +
+regras passivas) com a imagem oficial `ghcr.io/zaproxy/zaproxy:stable`. A API envia em todas as
+respostas os cabeçalhos que o ZAP cobra (CSP, `X-Frame-Options`, `X-Content-Type-Options` etc.),
+não revela a versão do Python no cabeçalho `Server` e limita o tamanho das entradas.
+
+O relatório (HTML, JSON e Markdown) vai para o artefato `relatorio-dast`.
+
+### Validações (gates)
+
+As duas ferramentas passam pelo mesmo script, [`scripts/gate_seguranca.py`](scripts/gate_seguranca.py),
+que lê o relatório, escreve uma tabela no resumo da execução e **reprova o job** quando:
+
+| Gate | Reprova se |
+|------|-----------|
+| SAST | houver achado do Semgrep com severidade `WARNING` (média) ou `ERROR` (alta) |
+| DAST | houver alerta do ZAP com risco médio ou alto, **ou** um alerta de qualquer risco cuja regra esteja marcada `FAIL` em [`.zap/rules.tsv`](.zap/rules.tsv) (ex.: cabeçalho `Server` revelando versão) |
+
+Regras marcadas `IGNORE` no `rules.tsv` são falsos positivos aceitos e não contam.
+
+Para rodar o gate localmente:
+
+```bash
+pip install semgrep
+semgrep scan --config p/python --config p/secrets --config p/github-actions --config .semgrep/ \
+  --json-output=semgrep.json
+python scripts/gate_seguranca.py semgrep semgrep.json --falha-em media
+```
 
 ## GitFlow
 

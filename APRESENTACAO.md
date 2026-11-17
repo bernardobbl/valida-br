@@ -24,8 +24,9 @@ https://github.com/bernardobbl/valida-br/actions
    validabr checa 529.982.247-25 11.222.333/0001-81 123
    validabr gera cpf -q 3
    ```
-2. Abrir `.github/workflows/ci.yml` e explicar os 4 jobs:
-   `lint → testes (matriz 3.10–3.13) → build → release (só em tag)`.
+2. Abrir `.github/workflows/ci.yml` e explicar os jobs:
+   `lint → testes (matriz 3.10–3.13) → build → DAST → release (só em tag)`, com o
+   `SAST` rodando em paralelo e bloqueando o build (detalhes na seção 5).
 3. Na aba Actions, mostrar uma execução verde e o grafo dos jobs.
 4. Mostrar a Release `v1.0.0` com o pacote anexado (gerada automaticamente pela pipeline).
 
@@ -132,6 +133,26 @@ git branch -d hotfix/1.1.1
 git push origin main develop --tags
 ```
 
+## 5. Secure pipeline: SAST e DAST (3 min)
+
+1. Na aba Actions, abrir uma execução e mostrar os jobs **SAST (Semgrep)** e **DAST (OWASP ZAP)**
+   no grafo. Abrir o **Summary**: cada gate escreve uma tabela com o resultado.
+2. Baixar os artefatos `relatorio-sast` e `relatorio-dast` (o `zap-report.html` abre no navegador).
+3. Mostrar a API que o ZAP ataca:
+   ```bash
+   validabr serve --porta 8000
+   curl -i "http://127.0.0.1:8000/api/valida?doc=529.982.247-25"   # ver os cabeçalhos de segurança
+   ```
+4. **Mostrar o gate barrando** (numa branch de feature, nunca na `main`):
+   ```bash
+   git checkout -b feature/demo-sast develop
+   echo 'def calcula(expr):
+       return eval(expr)' >> src/validabr/cli.py
+   git commit -am "demo: código inseguro" && git push -u origin feature/demo-sast
+   ```
+   👉 O job SAST fica vermelho com `valida-br-eval-exec`, e build, DAST e release **nem rodam**.
+   Depois: `git checkout develop && git branch -D feature/demo-sast && git push origin --delete feature/demo-sast`.
+
 ## Perguntas prováveis
 
 - **Por que `--no-ff`?** Para manter o commit de merge e deixar visível no histórico que aquilo
@@ -141,3 +162,12 @@ git push origin main develop --tags
 - **O que a pipeline impede?** Código com erro de lint, teste quebrado ou cobertura abaixo de 90%
   fica vermelho e não deve ser mergeado.
 - **Por que matriz de versões?** Garante que a biblioteca funciona do Python 3.10 ao 3.13.
+- **SAST x DAST?** SAST lê o código sem executar (acha `eval`, segredo no código, injeção);
+  DAST ataca a aplicação rodando, como um usuário externo (acha cabeçalho faltando, informação
+  vazando). Um não substitui o outro.
+- **Por que o DAST vem depois do build?** Ele testa exatamente o pacote que seria publicado,
+  instalado a partir do `.whl` gerado.
+- **Por que as actions estão com SHA em vez de `@v5`?** Uma tag pode ser movida para um commit
+  malicioso; o SHA não. O próprio Semgrep (`p/github-actions`) cobra isso.
+- **E o resto do slide (Gitleaks, Dependency-Check, Trivy, DefectDojo)?** Entram como novos jobs
+  no mesmo formato; os relatórios JSON do Semgrep e do ZAP já são aceitos pelo DefectDojo.
