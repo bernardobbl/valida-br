@@ -3,6 +3,7 @@
 Exemplos:
     validabr checa 529.982.247-25 11.222.333/0001-81 123
     validabr gera cpf --quantidade 3
+    validabr serve --porta 8000
 """
 
 from __future__ import annotations
@@ -28,7 +29,17 @@ def main(argv: list[str] | None = None) -> int:
     gera.add_argument("tipo", choices=["cpf", "cnpj"])
     gera.add_argument("-q", "--quantidade", type=int, default=1)
 
+    serve = sub.add_parser("serve", help="sobe a API HTTP (alvo do DAST)")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("-p", "--porta", type=int, default=8000)
+
     args = parser.parse_args(argv)
+
+    if args.comando == "serve":
+        from .api import serve as sobe_api
+
+        sobe_api(args.host, args.porta)
+        return 0
 
     if args.comando == "gera":
         gerador = gera_cpf if args.tipo == "cpf" else gera_cnpj
